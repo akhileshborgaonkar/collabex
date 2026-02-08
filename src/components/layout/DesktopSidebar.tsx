@@ -26,7 +26,10 @@ export function DesktopSidebar() {
         <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-primary">
           <Sparkles className="h-5 w-5 text-primary-foreground" />
         </div>
-        <span className="font-display text-xl font-bold gradient-text">InfluencerConnect</span>
+        <div>
+          <span className="font-display text-xl font-bold gradient-text">CollabEx</span>
+          <p className="text-xs text-muted-foreground">Where Influence Meets Impact.</p>
+        </div>
       </div>
 
       {/* Nav */}
