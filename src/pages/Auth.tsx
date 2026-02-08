@@ -75,7 +75,10 @@ export default function Auth() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary shadow-glow">
             <Sparkles className="h-5 w-5 text-primary-foreground" />
           </div>
-          <h1 className="font-display text-2xl font-bold gradient-text">InfluencerConnect</h1>
+          <div className="text-center">
+            <h1 className="font-display text-2xl font-bold gradient-text">CollabEx</h1>
+            <p className="text-sm text-muted-foreground mt-1">Where Influence Meets Impact.</p>
+          </div>
         </div>
 
         <Card className="border-border/50 shadow-xl">
