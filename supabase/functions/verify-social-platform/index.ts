@@ -95,31 +95,41 @@ const platformConfigs: Record<string, {
   },
 };
 
-async function verifyUrl(url: string): Promise<{ exists: boolean; statusCode?: number }> {
-  try {
-    console.log(`Verifying URL: ${url}`);
-    
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-      },
-      redirect: "follow",
-    });
-
-    console.log(`URL ${url} returned status: ${response.status}`);
-    
-    // Consume the body to prevent resource leak
-    await response.text();
-    
-    // Consider 200-299 and some 3xx as valid
-    return { exists: response.status >= 200 && response.status < 400, statusCode: response.status };
-  } catch (error) {
-    console.error(`Error verifying URL ${url}:`, error);
-    return { exists: false };
+// Validate URL format and structure (without making HTTP requests to avoid rate limiting)
+function validateUrlFormat(url: string, platformKey: string): { valid: boolean; error?: string } {
+  const config = platformConfigs[platformKey];
+  
+  if (!config) {
+    // For unknown platforms, just check if it's a valid URL
+    try {
+      new URL(url);
+      return { valid: true };
+    } catch {
+      return { valid: false, error: "Invalid URL format" };
+    }
   }
+  
+  // Check if URL matches the expected platform pattern
+  if (!config.urlPattern.test(url)) {
+    return { valid: false, error: `Invalid ${platformKey} URL format. Please provide a valid profile URL.` };
+  }
+  
+  // Extract handle to ensure it's not empty
+  const handle = config.extractHandle(url);
+  if (!handle || handle.length < 1) {
+    return { valid: false, error: "Could not extract username from URL" };
+  }
+  
+  // Validate handle doesn't contain suspicious patterns
+  const suspiciousPatterns = [
+    /^(login|signin|signup|register|admin|settings|explore|reels|stories|about|help|support|privacy|terms)$/i,
+  ];
+  
+  if (suspiciousPatterns.some(pattern => pattern.test(handle))) {
+    return { valid: false, error: "This appears to be a system page, not a user profile" };
+  }
+  
+  return { valid: true };
 }
 
 async function verifyPlatform(
@@ -128,48 +138,39 @@ async function verifyPlatform(
   url: string
 ): Promise<VerificationResult> {
   const platformKey = platformName.toLowerCase();
-  const config = platformConfigs[platformKey];
 
-  // Validate URL format
+  // If URL is provided, validate its format
   if (url) {
-    // Check if URL matches expected platform pattern
-    if (config && !config.urlPattern.test(url)) {
-      return {
-        valid: false,
-        error: `Invalid ${platformName} URL format`,
-      };
-    }
-
-    // Verify URL exists
-    const { exists, statusCode } = await verifyUrl(url);
+    const urlValidation = validateUrlFormat(url, platformKey);
     
-    if (!exists) {
+    if (!urlValidation.valid) {
       return {
         valid: false,
-        error: statusCode 
-          ? `Profile not found (status: ${statusCode})` 
-          : "Could not reach the profile URL",
+        error: urlValidation.error,
       };
     }
 
-    // URL is valid
+    // URL format is valid - mark as verified
+    // Note: We're using format validation because social platforms 
+    // block automated verification attempts (429 rate limiting)
+    console.log(`URL format validated for ${platformName}: ${url}`);
+    
     return {
       valid: true,
       displayName: handle,
     };
   }
 
-  // If no URL provided, build one from handle
+  // If no URL but handle is provided, construct and validate the URL
+  const config = platformConfigs[platformKey];
   if (config && handle) {
-    const profileUrl = config.buildProfileUrl(handle);
-    const { exists, statusCode } = await verifyUrl(profileUrl);
+    const profileUrl = config.buildProfileUrl(handle.replace('@', ''));
+    const urlValidation = validateUrlFormat(profileUrl, platformKey);
     
-    if (!exists) {
+    if (!urlValidation.valid) {
       return {
         valid: false,
-        error: statusCode 
-          ? `Profile not found (status: ${statusCode})` 
-          : "Could not verify the handle",
+        error: urlValidation.error,
       };
     }
 
@@ -181,7 +182,7 @@ async function verifyPlatform(
 
   return {
     valid: false,
-    error: "Please provide a valid profile URL",
+    error: "Please provide a valid profile URL or handle",
   };
 }
 
