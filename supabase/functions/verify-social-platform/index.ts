@@ -7,6 +7,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface VerifyRequest {
   platformId: string;
   platformName: string;
@@ -21,6 +24,51 @@ interface VerificationResult {
   followerCount?: number;
   bio?: string;
   error?: string;
+}
+
+// Validate verify request
+function validateVerifyRequest(body: unknown): { valid: true; data: VerifyRequest } | { valid: false; error: string } {
+  if (!body || typeof body !== "object") {
+    return { valid: false, error: "Invalid request body" };
+  }
+
+  const req = body as Record<string, unknown>;
+
+  // Validate platformId
+  if (typeof req.platformId !== "string" || !UUID_REGEX.test(req.platformId)) {
+    return { valid: false, error: "Invalid platformId - must be a valid UUID" };
+  }
+
+  // Validate platformName
+  if (typeof req.platformName !== "string" || req.platformName.length < 1 || req.platformName.length > 50) {
+    return { valid: false, error: "Invalid platformName - must be 1-50 characters" };
+  }
+
+  // Validate handle (optional but if provided, must be valid)
+  const handle = typeof req.handle === "string" ? req.handle : "";
+  if (handle.length > 100) {
+    return { valid: false, error: "Invalid handle - must be max 100 characters" };
+  }
+
+  // Validate url (optional but if provided, must be valid)
+  const url = typeof req.url === "string" ? req.url : "";
+  if (url.length > 500) {
+    return { valid: false, error: "Invalid url - must be max 500 characters" };
+  }
+
+  if (url && !url.startsWith("https://") && !url.startsWith("http://")) {
+    return { valid: false, error: "Invalid url - must start with http:// or https://" };
+  }
+
+  return {
+    valid: true,
+    data: {
+      platformId: req.platformId,
+      platformName: req.platformName,
+      handle,
+      url,
+    },
+  };
 }
 
 // Platform-specific URL patterns and verification
@@ -194,20 +242,81 @@ serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
       throw new Error("Database service not configured");
     }
 
+    // Authentication check
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      console.error("No authorization header provided");
+      return new Response(
+        JSON.stringify({ success: false, verified: false, error: "Unauthorized - missing authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Create client with user's auth token to verify identity
+    const userSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const { data: { user }, error: authError } = await userSupabase.auth.getUser();
+    if (authError || !user) {
+      console.error("Authentication failed:", authError?.message);
+      return new Response(
+        JSON.stringify({ success: false, verified: false, error: "Unauthorized - invalid token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`Authenticated user: ${user.id}`);
+
+    // Validate input
+    const body = await req.json();
+    const validation = validateVerifyRequest(body);
+    
+    if (!validation.valid) {
+      console.error("Validation failed:", validation.error);
+      return new Response(
+        JSON.stringify({ success: false, verified: false, error: validation.error }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { platformId, platformName, handle, url } = validation.data;
+
+    // Use service role client for admin operations
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { platformId, platformName, handle, url }: VerifyRequest = await req.json();
+    // Verify the platform belongs to the authenticated user
+    const { data: platform, error: platformError } = await supabase
+      .from("social_platforms")
+      .select("profile_id, profiles!inner(user_id)")
+      .eq("id", platformId)
+      .single();
+
+    if (platformError || !platform) {
+      console.error("Platform not found:", platformError);
+      return new Response(
+        JSON.stringify({ success: false, verified: false, error: "Platform not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if the platform belongs to the authenticated user
+    const profileUserId = (platform.profiles as { user_id: string }).user_id;
+    if (profileUserId !== user.id) {
+      console.error("User does not own this platform");
+      return new Response(
+        JSON.stringify({ success: false, verified: false, error: "Unauthorized - not your platform" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     console.log(`Verifying platform: ${platformName}, handle: ${handle}, url: ${url}`);
-
-    if (!platformId || !platformName) {
-      throw new Error("Missing required fields: platformId, platformName");
-    }
 
     // Verify the social platform
     const result = await verifyPlatform(platformName, handle, url);
@@ -244,7 +353,7 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error("Error in verify-social-platform:", errorMessage);
     return new Response(
-      JSON.stringify({ success: false, verified: false, error: errorMessage }),
+      JSON.stringify({ success: false, verified: false, error: "An error occurred processing your request" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

@@ -8,6 +8,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Input validation schema
 interface NotificationRequest {
   recipientUserId: string;
   type: "collab_request" | "collab_accepted" | "collab_completed";
@@ -15,6 +16,71 @@ interface NotificationRequest {
   message: string;
   data?: Record<string, unknown>;
   senderName: string;
+}
+
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Validate notification request
+function validateNotificationRequest(body: unknown): { valid: true; data: NotificationRequest } | { valid: false; error: string } {
+  if (!body || typeof body !== "object") {
+    return { valid: false, error: "Invalid request body" };
+  }
+
+  const req = body as Record<string, unknown>;
+
+  // Validate recipientUserId
+  if (typeof req.recipientUserId !== "string" || !UUID_REGEX.test(req.recipientUserId)) {
+    return { valid: false, error: "Invalid recipientUserId - must be a valid UUID" };
+  }
+
+  // Validate type
+  const validTypes = ["collab_request", "collab_accepted", "collab_completed"];
+  if (typeof req.type !== "string" || !validTypes.includes(req.type)) {
+    return { valid: false, error: "Invalid type - must be collab_request, collab_accepted, or collab_completed" };
+  }
+
+  // Validate title
+  if (typeof req.title !== "string" || req.title.length < 1 || req.title.length > 200) {
+    return { valid: false, error: "Invalid title - must be 1-200 characters" };
+  }
+
+  // Validate message
+  if (typeof req.message !== "string" || req.message.length < 1 || req.message.length > 1000) {
+    return { valid: false, error: "Invalid message - must be 1-1000 characters" };
+  }
+
+  // Validate senderName
+  if (typeof req.senderName !== "string" || req.senderName.length < 1 || req.senderName.length > 100) {
+    return { valid: false, error: "Invalid senderName - must be 1-100 characters" };
+  }
+
+  // Validate optional data
+  if (req.data !== undefined && (typeof req.data !== "object" || req.data === null)) {
+    return { valid: false, error: "Invalid data - must be an object" };
+  }
+
+  return {
+    valid: true,
+    data: {
+      recipientUserId: req.recipientUserId,
+      type: req.type as NotificationRequest["type"],
+      title: req.title,
+      message: req.message,
+      senderName: req.senderName,
+      data: req.data as Record<string, unknown> | undefined,
+    },
+  };
+}
+
+// Escape HTML to prevent XSS in emails
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 serve(async (req) => {
@@ -27,26 +93,119 @@ serve(async (req) => {
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 
     if (!RESEND_API_KEY) {
       console.error("RESEND_API_KEY not configured");
       throw new Error("Email service not configured");
     }
 
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
       console.error("Supabase credentials not configured");
       throw new Error("Database service not configured");
     }
 
-    const resend = new Resend(RESEND_API_KEY);
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // Authentication check
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      console.error("No authorization header provided");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized - missing authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    const { recipientUserId, type, title, message, data, senderName }: NotificationRequest = await req.json();
+    // Create client with user's auth token to verify identity
+    const userSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const { data: { user }, error: authError } = await userSupabase.auth.getUser();
+    if (authError || !user) {
+      console.error("Authentication failed:", authError?.message);
+      return new Response(
+        JSON.stringify({ error: "Unauthorized - invalid token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`Authenticated user: ${user.id}`);
+
+    // Validate input
+    const body = await req.json();
+    const validation = validateNotificationRequest(body);
+    
+    if (!validation.valid) {
+      console.error("Validation failed:", validation.error);
+      return new Response(
+        JSON.stringify({ error: validation.error }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { recipientUserId, type, title, message, data, senderName } = validation.data;
+
+    // Use service role client for admin operations
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const resend = new Resend(RESEND_API_KEY);
+
+    // Get the sender's profile to verify they exist and are authorized
+    const { data: senderProfile, error: senderError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (senderError || !senderProfile) {
+      console.error("Sender profile not found:", senderError);
+      return new Response(
+        JSON.stringify({ error: "Sender profile not found" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify that sender has a valid relationship with recipient (match or collaboration)
+    const { data: relationship, error: relationshipError } = await supabase
+      .from("matches")
+      .select("id")
+      .or(`and(profile_a.eq.${senderProfile.id},profile_b.eq.${recipientUserId}),and(profile_a.eq.${recipientUserId},profile_b.eq.${senderProfile.id})`)
+      .limit(1);
+
+    const { data: collaboration, error: collabError } = await supabase
+      .from("collaborations")
+      .select("id")
+      .or(`and(profile_a.eq.${senderProfile.id},profile_b.eq.${recipientUserId}),and(profile_a.eq.${recipientUserId},profile_b.eq.${senderProfile.id})`)
+      .limit(1);
+
+    const hasRelationship = (relationship && relationship.length > 0) || (collaboration && collaboration.length > 0);
+    
+    if (!hasRelationship) {
+      console.error("No valid relationship between sender and recipient");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized - no relationship with recipient" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     console.log(`Creating notification for user ${recipientUserId}: ${type}`);
 
+    // Get recipient's profile to find their user_id
+    const { data: recipientProfile, error: recipientError } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("id", recipientUserId)
+      .single();
+
+    if (recipientError || !recipientProfile) {
+      console.error("Recipient profile not found:", recipientError);
+      return new Response(
+        JSON.stringify({ error: "Recipient not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Get the recipient's email from auth.users
-    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(recipientUserId);
+    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(recipientProfile.user_id);
     
     if (userError || !userData?.user?.email) {
       console.error("Error fetching user:", userError);
@@ -56,14 +215,19 @@ serve(async (req) => {
     const recipientEmail = userData.user.email;
     console.log(`Recipient email: ${recipientEmail}`);
 
+    // Sanitize user input for HTML email
+    const safeSenderName = escapeHtml(senderName);
+    const safeMessage = escapeHtml(message);
+    const safeTitle = escapeHtml(title);
+
     // Create in-app notification
     const { error: notifError } = await supabase
       .from("notifications")
       .insert({
-        user_id: recipientUserId,
+        user_id: recipientProfile.user_id,
         type,
-        title,
-        message,
+        title: safeTitle,
+        message: safeMessage,
         data: data || {},
         read: false,
       });
@@ -75,30 +239,30 @@ serve(async (req) => {
 
     console.log("In-app notification created successfully");
 
-    // Send email notification
+    // Send email notification with sanitized content
     const emailSubjects: Record<string, string> = {
-      collab_request: `${senderName} wants to collaborate with you!`,
-      collab_accepted: `${senderName} accepted your collaboration request!`,
-      collab_completed: `Your collaboration with ${senderName} is complete!`,
+      collab_request: `${safeSenderName} wants to collaborate with you!`,
+      collab_accepted: `${safeSenderName} accepted your collaboration request!`,
+      collab_completed: `Your collaboration with ${safeSenderName} is complete!`,
     };
 
     const emailBodies: Record<string, string> = {
       collab_request: `
         <h2>New Collaboration Request</h2>
-        <p><strong>${senderName}</strong> has sent you a collaboration request.</p>
-        <p>${message}</p>
+        <p><strong>${safeSenderName}</strong> has sent you a collaboration request.</p>
+        <p>${safeMessage}</p>
         <p>Log in to your account to accept or decline this request.</p>
       `,
       collab_accepted: `
         <h2>Collaboration Accepted!</h2>
-        <p><strong>${senderName}</strong> has accepted your collaboration request.</p>
-        <p>${message}</p>
+        <p><strong>${safeSenderName}</strong> has accepted your collaboration request.</p>
+        <p>${safeMessage}</p>
         <p>You can now start working together. Good luck!</p>
       `,
       collab_completed: `
         <h2>Collaboration Completed</h2>
-        <p>Your collaboration with <strong>${senderName}</strong> has been marked as complete.</p>
-        <p>${message}</p>
+        <p>Your collaboration with <strong>${safeSenderName}</strong> has been marked as complete.</p>
+        <p>${safeMessage}</p>
         <p>Don't forget to leave a review for your collaborator!</p>
       `,
     };
@@ -107,7 +271,7 @@ serve(async (req) => {
       const emailResponse = await resend.emails.send({
         from: "CollabEx <onboarding@resend.dev>",
         to: [recipientEmail],
-        subject: emailSubjects[type] || title,
+        subject: emailSubjects[type] || safeTitle,
         html: `
           <!DOCTYPE html>
           <html>
@@ -126,7 +290,7 @@ serve(async (req) => {
                 <h1 style="margin: 0;">CollabEx</h1>
               </div>
               <div class="content">
-                ${emailBodies[type] || `<p>${message}</p>`}
+                ${emailBodies[type] || `<p>${safeMessage}</p>`}
               </div>
               <div class="footer">
                 <p>This is an automated notification from CollabEx.</p>
@@ -151,7 +315,7 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error("Error in send-notification:", errorMessage);
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: "An error occurred processing your request" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
