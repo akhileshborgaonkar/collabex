@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, MapPin, Star, ExternalLink, Handshake } from "lucide-react";
+import { Loader2, MapPin, Star, ExternalLink, Handshake, CheckCircle2, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
 import { StartCollaborationDialog } from "@/components/collaborations/StartCollaborationDialog";
 import { toast } from "sonner";
@@ -156,12 +156,34 @@ export default function Profile() {
             <CardHeader><CardTitle className="font-display text-lg">Platforms</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {profile.social_platforms.map((sp) => (
-                <div key={sp.id} className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{sp.platform_name}</p>
-                    <p className="text-sm text-muted-foreground">@{sp.handle} • {sp.follower_count?.toLocaleString()} followers</p>
+                <div key={sp.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{sp.platform_name}</p>
+                        {sp.is_verified && (
+                          <Badge variant="secondary" className="gap-1 text-xs bg-primary/10 text-primary border-primary/20">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Verified
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        @{sp.handle}
+                        {sp.follower_count ? ` • ${sp.follower_count.toLocaleString()} followers` : ""}
+                      </p>
+                    </div>
                   </div>
-                  {sp.url && <a href={sp.url} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-4 w-4 text-muted-foreground hover:text-primary" /></a>}
+                  {sp.url && (
+                    <a 
+                      href={sp.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  )}
                 </div>
               ))}
             </CardContent>
