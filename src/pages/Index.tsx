@@ -64,7 +64,16 @@ export default function Index() {
     return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
   if (!user) return <Navigate to="/auth" replace />;
-  if (profile && !profile.onboarding_completed) return <Navigate to="/onboarding" replace />;
+  
+  // If no account type selected yet, go to account type selection
+  if (profile && !profile.account_type) {
+    return <Navigate to="/account-type" replace />;
+  }
+  
+  // If onboarding not completed, redirect to appropriate onboarding
+  if (profile && !profile.onboarding_completed) {
+    return <Navigate to={profile.account_type === "brand" ? "/brand-onboarding" : "/onboarding"} replace />;
+  }
 
   const stats = [
     { icon: Users, label: "Matches", value: statsLoading ? "..." : matchesCount.toString(), color: "text-primary" },
