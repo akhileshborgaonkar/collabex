@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Save, LogOut, Building2, Users } from "lucide-react";
+import { Loader2, Save, LogOut, Building2, Users, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { NicheSelector } from "@/components/profile/NicheSelector";
 
 export default function SettingsPage() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -114,6 +115,22 @@ export default function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Niche Selector - Only for creators/influencers */}
+      {!isBrand && profile && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Content Niches
+            </CardTitle>
+            <CardDescription>Select your content niches. Changes are saved automatically.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <NicheSelector profileId={profile.id} />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader><CardTitle className="font-display">Account</CardTitle></CardHeader>
