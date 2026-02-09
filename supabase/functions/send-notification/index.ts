@@ -11,7 +11,7 @@ const corsHeaders = {
 // Input validation schema
 interface NotificationRequest {
   recipientUserId: string;
-  type: "collab_request" | "collab_accepted" | "collab_completed";
+  type: "collab_request" | "collab_accepted" | "collab_completed" | "collab_interest";
   title: string;
   message: string;
   data?: Record<string, unknown>;
@@ -35,9 +35,9 @@ function validateNotificationRequest(body: unknown): { valid: true; data: Notifi
   }
 
   // Validate type
-  const validTypes = ["collab_request", "collab_accepted", "collab_completed"];
+  const validTypes = ["collab_request", "collab_accepted", "collab_completed", "collab_interest"];
   if (typeof req.type !== "string" || !validTypes.includes(req.type)) {
-    return { valid: false, error: "Invalid type - must be collab_request, collab_accepted, or collab_completed" };
+    return { valid: false, error: "Invalid type - must be collab_request, collab_accepted, collab_completed, or collab_interest" };
   }
 
   // Validate title
@@ -164,20 +164,47 @@ serve(async (req) => {
       );
     }
 
-    // Verify that sender has a valid relationship with recipient (match or collaboration)
-    const { data: relationship, error: relationshipError } = await supabase
+    // Verify that sender has a valid relationship with recipient
+    // Check for matches
+    const { data: relationship } = await supabase
       .from("matches")
       .select("id")
       .or(`and(profile_a.eq.${senderProfile.id},profile_b.eq.${recipientUserId}),and(profile_a.eq.${recipientUserId},profile_b.eq.${senderProfile.id})`)
       .limit(1);
 
-    const { data: collaboration, error: collabError } = await supabase
+    // Check for collaborations
+    const { data: collaboration } = await supabase
       .from("collaborations")
       .select("id")
       .or(`and(profile_a.eq.${senderProfile.id},profile_b.eq.${recipientUserId}),and(profile_a.eq.${recipientUserId},profile_b.eq.${senderProfile.id})`)
       .limit(1);
 
-    const hasRelationship = (relationship && relationship.length > 0) || (collaboration && collaboration.length > 0);
+    // Check if sender has applied to recipient's collab post (for collab_interest notifications)
+    // This validates that the sender is applying to a post owned by the recipient
+    const { data: collabApplication } = await supabase
+      .from("collab_applications")
+      .select("id, collab_posts!inner(author_id)")
+      .eq("applicant_id", senderProfile.id)
+      .limit(1);
+    
+    const hasApplicationToRecipient = collabApplication && collabApplication.some(
+      (app: { collab_posts: { author_id: string } }) => app.collab_posts.author_id === recipientUserId
+    );
+
+    // Check if recipient owns a collab post that sender can apply to
+    const { data: recipientPosts } = await supabase
+      .from("collab_posts")
+      .select("id")
+      .eq("author_id", recipientUserId)
+      .limit(1);
+    
+    const recipientHasCollabPost = recipientPosts && recipientPosts.length > 0;
+
+    const hasRelationship = 
+      (relationship && relationship.length > 0) || 
+      (collaboration && collaboration.length > 0) ||
+      hasApplicationToRecipient ||
+      (type === "collab_interest" && recipientHasCollabPost);
     
     if (!hasRelationship) {
       console.error("No valid relationship between sender and recipient");
@@ -244,6 +271,7 @@ serve(async (req) => {
       collab_request: `${safeSenderName} wants to collaborate with you!`,
       collab_accepted: `${safeSenderName} accepted your collaboration request!`,
       collab_completed: `Your collaboration with ${safeSenderName} is complete!`,
+      collab_interest: `${safeSenderName} is interested in your collaboration!`,
     };
 
     const emailBodies: Record<string, string> = {
@@ -264,6 +292,12 @@ serve(async (req) => {
         <p>Your collaboration with <strong>${safeSenderName}</strong> has been marked as complete.</p>
         <p>${safeMessage}</p>
         <p>Don't forget to leave a review for your collaborator!</p>
+      `,
+      collab_interest: `
+        <h2>Someone's Interested!</h2>
+        <p><strong>${safeSenderName}</strong> has shown interest in your collaboration opportunity.</p>
+        <p>${safeMessage}</p>
+        <p>Log in to view their profile and start a collaboration!</p>
       `,
     };
 
