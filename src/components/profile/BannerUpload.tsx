@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Loader2, ImageIcon, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 interface BannerUploadProps {
   profileId: string;
@@ -15,6 +16,7 @@ export function BannerUpload({ profileId, currentUrl, onUpload, onRemove }: Bann
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -33,8 +35,15 @@ export function BannerUpload({ profileId, currentUrl, onUpload, onRemove }: Bann
     setUploading(true);
 
     try {
+      if (!user) {
+        toast({ title: "Error", description: "You must be logged in to upload", variant: "destructive" });
+        setUploading(false);
+        return;
+      }
+
       const fileExt = file.name.split(".").pop();
-      const fileName = `${profileId}/banner.${fileExt}`;
+      // Use user.id (auth.uid()) for storage path to match RLS policies
+      const fileName = `${user.id}/banner.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from("portfolio")

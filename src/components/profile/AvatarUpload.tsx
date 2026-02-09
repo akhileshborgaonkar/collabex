@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Loader2, Camera, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 interface AvatarUploadProps {
   profileId: string;
@@ -16,6 +17,7 @@ export function AvatarUpload({ profileId, currentUrl, displayName, onUpload }: A
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -36,8 +38,15 @@ export function AvatarUpload({ profileId, currentUrl, displayName, onUpload }: A
     setUploading(true);
 
     try {
+      if (!user) {
+        toast({ title: "Error", description: "You must be logged in to upload", variant: "destructive" });
+        setUploading(false);
+        return;
+      }
+
       const fileExt = file.name.split(".").pop();
-      const fileName = `${profileId}/avatar.${fileExt}`;
+      // Use user.id (auth.uid()) for storage path to match RLS policies
+      const fileName = `${user.id}/avatar.${fileExt}`;
 
       // Upload to storage
       const { error: uploadError } = await supabase.storage
