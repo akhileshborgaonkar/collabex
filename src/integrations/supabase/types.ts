@@ -335,14 +335,18 @@ export type Database = {
           audience_tier: string | null
           avatar_url: string | null
           banner_url: string | null
+          base_rate: number | null
           bio: string | null
           company_name: string | null
           created_at: string
+          currency: string | null
           display_name: string
           id: string
           industry: string | null
           location: string | null
           onboarding_completed: boolean | null
+          open_to_free_collabs: boolean | null
+          rate_type: string | null
           updated_at: string
           user_id: string
           video_url: string | null
@@ -353,14 +357,18 @@ export type Database = {
           audience_tier?: string | null
           avatar_url?: string | null
           banner_url?: string | null
+          base_rate?: number | null
           bio?: string | null
           company_name?: string | null
           created_at?: string
+          currency?: string | null
           display_name?: string
           id?: string
           industry?: string | null
           location?: string | null
           onboarding_completed?: boolean | null
+          open_to_free_collabs?: boolean | null
+          rate_type?: string | null
           updated_at?: string
           user_id: string
           video_url?: string | null
@@ -371,14 +379,18 @@ export type Database = {
           audience_tier?: string | null
           avatar_url?: string | null
           banner_url?: string | null
+          base_rate?: number | null
           bio?: string | null
           company_name?: string | null
           created_at?: string
+          currency?: string | null
           display_name?: string
           id?: string
           industry?: string | null
           location?: string | null
           onboarding_completed?: boolean | null
+          open_to_free_collabs?: boolean | null
+          rate_type?: string | null
           updated_at?: string
           user_id?: string
           video_url?: string | null
