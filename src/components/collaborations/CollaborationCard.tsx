@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ReviewDialog } from "./ReviewDialog";
+import { useProfile } from "@/hooks/useProfile";
 
 type CollaborationStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
@@ -44,6 +45,7 @@ const statusConfig: Record<CollaborationStatus, { label: string; icon: React.Ele
 };
 
 export function CollaborationCard({ collaboration, currentProfileId, onUpdate, existingReview }: CollaborationCardProps) {
+  const { profile } = useProfile();
   const [updating, setUpdating] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
 
@@ -54,6 +56,37 @@ export function CollaborationCard({ collaboration, currentProfileId, onUpdate, e
   // Check if current user is the one who received the request (profile_b)
   const isRecipient = collaboration.profile_b === currentProfileId;
   const isRequester = collaboration.profile_a === currentProfileId;
+
+  const sendNotification = async (
+    recipientProfileId: string,
+    type: "collab_accepted" | "collab_completed",
+    title: string,
+    message: string
+  ) => {
+    try {
+      // Get recipient's user_id
+      const { data: recipientProfile } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("id", recipientProfileId)
+        .single();
+
+      if (recipientProfile?.user_id) {
+        await supabase.functions.invoke("send-notification", {
+          body: {
+            recipientUserId: recipientProfile.user_id,
+            type,
+            title,
+            message,
+            data: { collaborationTitle: collaboration.title, collaborationId: collaboration.id },
+            senderName: profile?.display_name || "A user",
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Failed to send notification:", error);
+    }
+  };
 
   const updateStatus = async (newStatus: CollaborationStatus) => {
     setUpdating(true);
@@ -71,6 +104,25 @@ export function CollaborationCard({ collaboration, currentProfileId, onUpdate, e
         .eq("id", collaboration.id);
 
       if (error) throw error;
+
+      // Send notifications based on status change
+      if (newStatus === "in_progress") {
+        // Notify the requester that their request was accepted
+        await sendNotification(
+          collaboration.profile_a,
+          "collab_accepted",
+          "Collaboration Accepted!",
+          `${profile?.display_name || "Your partner"} accepted your collaboration request for "${collaboration.title}"`
+        );
+      } else if (newStatus === "completed") {
+        // Notify the partner that collaboration is complete
+        await sendNotification(
+          collaboration.partner.id,
+          "collab_completed",
+          "Collaboration Completed",
+          `Your collaboration "${collaboration.title}" has been marked as complete. Don't forget to leave a review!`
+        );
+      }
       
       const statusMessages: Record<CollaborationStatus, string> = {
         pending: "Status updated",
