@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useProfile } from "@/hooks/useProfile";
 
 interface StartCollaborationDialogProps {
   open: boolean;
@@ -31,6 +32,7 @@ export function StartCollaborationDialog({
   partnerName,
   onSuccess,
 }: StartCollaborationDialogProps) {
+  const { profile } = useProfile();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -53,7 +55,28 @@ export function StartCollaborationDialog({
 
       if (error) throw error;
 
-      toast.success("Collaboration started!");
+      // Get partner's user_id for notification
+      const { data: partnerProfile } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("id", partnerProfileId)
+        .single();
+
+      if (partnerProfile?.user_id) {
+        // Send notification to partner
+        await supabase.functions.invoke("send-notification", {
+          body: {
+            recipientUserId: partnerProfile.user_id,
+            type: "collab_request",
+            title: "New Collaboration Request",
+            message: `${profile?.display_name || "Someone"} wants to collaborate on "${title.trim()}"`,
+            data: { collaborationTitle: title.trim() },
+            senderName: profile?.display_name || "A user",
+          },
+        });
+      }
+
+      toast.success("Collaboration request sent!");
       setTitle("");
       setDescription("");
       onOpenChange(false);
