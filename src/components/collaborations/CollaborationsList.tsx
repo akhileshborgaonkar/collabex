@@ -121,9 +121,9 @@ export function CollaborationsList({ profileId }: CollaborationsListProps) {
     );
   }
 
-  const activeCollabs = collaborations.filter(
-    (c) => c.status === "pending" || c.status === "in_progress"
-  );
+  const pendingCollabs = collaborations.filter((c) => c.status === "pending");
+  const inProgressCollabs = collaborations.filter((c) => c.status === "in_progress");
+  const activeCollabs = [...pendingCollabs, ...inProgressCollabs];
   const completedCollabs = collaborations.filter((c) => c.status === "completed");
   const cancelledCollabs = collaborations.filter((c) => c.status === "cancelled");
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { CheckCircle, Clock, XCircle, PlayCircle, Star, MessageSquare } from "lucide-react";
+import { CheckCircle, Clock, XCircle, PlayCircle, Star, MessageSquare, UserCheck, UserX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,10 +37,10 @@ interface CollaborationCardProps {
 }
 
 const statusConfig: Record<CollaborationStatus, { label: string; icon: React.ElementType; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  pending: { label: "Pending", icon: Clock, variant: "secondary" },
+  pending: { label: "Pending Approval", icon: Clock, variant: "secondary" },
   in_progress: { label: "In Progress", icon: PlayCircle, variant: "default" },
   completed: { label: "Completed", icon: CheckCircle, variant: "outline" },
-  cancelled: { label: "Cancelled", icon: XCircle, variant: "destructive" },
+  cancelled: { label: "Declined", icon: XCircle, variant: "destructive" },
 };
 
 export function CollaborationCard({ collaboration, currentProfileId, onUpdate, existingReview }: CollaborationCardProps) {
@@ -50,6 +50,10 @@ export function CollaborationCard({ collaboration, currentProfileId, onUpdate, e
   const config = statusConfig[collaboration.status];
   const StatusIcon = config.icon;
   const hasReviewedPartner = existingReview?.reviewee_id === collaboration.partner.id;
+  
+  // Check if current user is the one who received the request (profile_b)
+  const isRecipient = collaboration.profile_b === currentProfileId;
+  const isRequester = collaboration.profile_a === currentProfileId;
 
   const updateStatus = async (newStatus: CollaborationStatus) => {
     setUpdating(true);
@@ -67,7 +71,15 @@ export function CollaborationCard({ collaboration, currentProfileId, onUpdate, e
         .eq("id", collaboration.id);
 
       if (error) throw error;
-      toast.success(`Collaboration marked as ${newStatus}`);
+      
+      const statusMessages: Record<CollaborationStatus, string> = {
+        pending: "Status updated",
+        in_progress: "Collaboration accepted! Work has begun.",
+        completed: "Collaboration marked as completed!",
+        cancelled: "Collaboration declined",
+      };
+      
+      toast.success(statusMessages[newStatus]);
       onUpdate();
     } catch (error: any) {
       toast.error(error.message);
@@ -88,7 +100,9 @@ export function CollaborationCard({ collaboration, currentProfileId, onUpdate, e
               </Avatar>
               <div>
                 <CardTitle className="text-base">{collaboration.title || "Untitled Collaboration"}</CardTitle>
-                <p className="text-sm text-muted-foreground">with {collaboration.partner.display_name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {isRequester ? "Request to" : "Request from"} {collaboration.partner.display_name}
+                </p>
               </div>
             </div>
             <Badge variant={config.variant} className="gap-1">
@@ -110,24 +124,40 @@ export function CollaborationCard({ collaboration, currentProfileId, onUpdate, e
           </div>
 
           <div className="flex flex-wrap gap-2 pt-2">
-            {collaboration.status === "pending" && (
+            {/* Pending state - recipient can accept/decline, requester can only cancel */}
+            {collaboration.status === "pending" && isRecipient && (
               <>
                 <Button size="sm" onClick={() => updateStatus("in_progress")} disabled={updating}>
-                  <PlayCircle className="h-4 w-4 mr-1" />
-                  Start
+                  <UserCheck className="h-4 w-4 mr-1" />
+                  Accept
                 </Button>
                 <Button size="sm" variant="destructive" onClick={() => updateStatus("cancelled")} disabled={updating}>
-                  <XCircle className="h-4 w-4 mr-1" />
-                  Cancel
+                  <UserX className="h-4 w-4 mr-1" />
+                  Decline
                 </Button>
               </>
             )}
+            {collaboration.status === "pending" && isRequester && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-muted-foreground">
+                  <Clock className="h-3 w-3 mr-1" />
+                  Awaiting response
+                </Badge>
+                <Button size="sm" variant="ghost" onClick={() => updateStatus("cancelled")} disabled={updating}>
+                  Cancel Request
+                </Button>
+              </div>
+            )}
+            
+            {/* In progress - either party can mark complete */}
             {collaboration.status === "in_progress" && (
               <Button size="sm" onClick={() => updateStatus("completed")} disabled={updating}>
                 <CheckCircle className="h-4 w-4 mr-1" />
                 Mark Complete
               </Button>
             )}
+            
+            {/* Completed - can leave review if not already done */}
             {collaboration.status === "completed" && !hasReviewedPartner && (
               <Button size="sm" variant="outline" onClick={() => setReviewOpen(true)}>
                 <Star className="h-4 w-4 mr-1" />
