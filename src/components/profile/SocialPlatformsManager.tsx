@@ -3,8 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, X, ExternalLink, CheckCircle2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Plus, X, ExternalLink, CheckCircle2, ShieldCheck, ShieldAlert } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 interface SocialPlatform {
   id: string;
@@ -13,6 +15,7 @@ interface SocialPlatform {
   follower_count: number | null;
   url: string | null;
   is_verified: boolean;
+  verified_at: string | null;
 }
 
 interface SocialPlatformsManagerProps {
@@ -35,6 +38,7 @@ export function SocialPlatformsManager({ profileId }: SocialPlatformsManagerProp
   const [platforms, setPlatforms] = useState<SocialPlatform[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPlatform, setNewPlatform] = useState({ name: "", handle: "", url: "", followers: "" });
   const { toast } = useToast();
@@ -52,6 +56,58 @@ export function SocialPlatformsManager({ profileId }: SocialPlatformsManagerProp
 
     if (data) setPlatforms(data);
     setLoading(false);
+  };
+
+  const handleVerify = async (platform: SocialPlatform) => {
+    if (!platform.url && !platform.handle) {
+      toast({ 
+        title: "Cannot verify", 
+        description: "Please add a profile URL first", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    setVerifying(platform.id);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("verify-social-platform", {
+        body: {
+          platformId: platform.id,
+          platformName: platform.platform_name,
+          handle: platform.handle,
+          url: platform.url || "",
+        },
+      });
+
+      if (error) throw error;
+
+      if (data.verified) {
+        setPlatforms(platforms.map((p) => 
+          p.id === platform.id 
+            ? { ...p, is_verified: true, verified_at: new Date().toISOString() } 
+            : p
+        ));
+        toast({ 
+          title: "Verified!", 
+          description: `Your ${platform.platform_name} profile has been verified.` 
+        });
+      } else {
+        toast({ 
+          title: "Verification failed", 
+          description: data.error || "Could not verify this profile. Please check the URL.", 
+          variant: "destructive" 
+        });
+      }
+    } catch (err: any) {
+      toast({ 
+        title: "Error", 
+        description: err.message || "Failed to verify platform", 
+        variant: "destructive" 
+      });
+    }
+
+    setVerifying(null);
   };
 
   const handleAdd = async () => {
@@ -80,7 +136,7 @@ export function SocialPlatformsManager({ profileId }: SocialPlatformsManagerProp
       setPlatforms([...platforms, data]);
       setNewPlatform({ name: "", handle: "", url: "", followers: "" });
       setShowAddForm(false);
-      toast({ title: "Success", description: "Social platform added!" });
+      toast({ title: "Success", description: "Social platform added! Click 'Verify' to validate your profile." });
     } catch (err) {
       toast({ title: "Error", description: "Failed to add platform", variant: "destructive" });
     }
@@ -108,21 +164,6 @@ export function SocialPlatformsManager({ profileId }: SocialPlatformsManagerProp
     setSaving(null);
   };
 
-  const handleUpdate = async (id: string, field: string, value: string | number) => {
-    try {
-      const { error } = await supabase
-        .from("social_platforms")
-        .update({ [field]: value })
-        .eq("id", id);
-
-      if (error) throw error;
-
-      setPlatforms(platforms.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
-    } catch (err) {
-      toast({ title: "Error", description: "Failed to update", variant: "destructive" });
-    }
-  };
-
   const getIcon = (name: string) => {
     const key = name.toLowerCase();
     return PLATFORM_ICONS[key] || "🔗";
@@ -147,14 +188,25 @@ export function SocialPlatformsManager({ profileId }: SocialPlatformsManagerProp
       {platforms.map((platform) => (
         <div
           key={platform.id}
-          className="flex items-center gap-3 p-3 rounded-lg border bg-card"
+          className={cn(
+            "flex items-center gap-3 p-3 rounded-lg border bg-card",
+            platform.is_verified && "border-primary/30 bg-primary/5"
+          )}
         >
           <span className="text-2xl">{getIcon(platform.platform_name)}</span>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="font-medium truncate">{platform.platform_name}</span>
-              {platform.is_verified && (
-                <CheckCircle2 className="h-4 w-4 text-primary flex-shrink-0" />
+              {platform.is_verified ? (
+                <Badge variant="secondary" className="gap-1 text-xs bg-primary/10 text-primary border-primary/20">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Verified
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="gap-1 text-xs text-muted-foreground">
+                  <ShieldAlert className="h-3 w-3" />
+                  Unverified
+                </Badge>
               )}
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -163,8 +215,27 @@ export function SocialPlatformsManager({ profileId }: SocialPlatformsManagerProp
                 <span className="text-xs">• {platform.follower_count.toLocaleString()} followers</span>
               )}
             </div>
+            {platform.url && (
+              <p className="text-xs text-muted-foreground truncate mt-0.5">{platform.url}</p>
+            )}
           </div>
           <div className="flex items-center gap-1">
+            {!platform.is_verified && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleVerify(platform)}
+                disabled={verifying === platform.id}
+                className="h-8 text-xs gap-1"
+              >
+                {verifying === platform.id ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-3 w-3" />
+                )}
+                Verify
+              </Button>
+            )}
             {platform.url && (
               <Button
                 variant="ghost"
@@ -208,30 +279,31 @@ export function SocialPlatformsManager({ profileId }: SocialPlatformsManagerProp
             <div className="space-y-1">
               <Label className="text-xs">Handle</Label>
               <Input
-                placeholder="@yourhandle"
+                placeholder="yourhandle"
                 value={newPlatform.handle}
                 onChange={(e) => setNewPlatform({ ...newPlatform, handle: e.target.value })}
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Profile URL (optional)</Label>
-              <Input
-                placeholder="https://..."
-                value={newPlatform.url}
-                onChange={(e) => setNewPlatform({ ...newPlatform, url: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Followers (optional)</Label>
-              <Input
-                type="number"
-                placeholder="10000"
-                value={newPlatform.followers}
-                onChange={(e) => setNewPlatform({ ...newPlatform, followers: e.target.value })}
-              />
-            </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Profile URL (required for verification)</Label>
+            <Input
+              placeholder="https://instagram.com/yourhandle"
+              value={newPlatform.url}
+              onChange={(e) => setNewPlatform({ ...newPlatform, url: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Adding a valid URL allows us to verify your social profile
+            </p>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Followers (optional)</Label>
+            <Input
+              type="number"
+              placeholder="10000"
+              value={newPlatform.followers}
+              onChange={(e) => setNewPlatform({ ...newPlatform, followers: e.target.value })}
+            />
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setShowAddForm(false)}>
