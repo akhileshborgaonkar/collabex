@@ -10,11 +10,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Loader2, Calendar, Briefcase, Users } from "lucide-react";
+import { Plus, Loader2, Calendar, Briefcase, Users, HandHeart, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CollaborationsList } from "@/components/collaborations/CollaborationsList";
+import { ShowInterestDialog } from "@/components/collaborations/ShowInterestDialog";
 import type { Tables } from "@/integrations/supabase/types";
 
 type CollabPost = Tables<"collab_posts"> & { profiles: { display_name: string; avatar_url: string | null } };
@@ -26,6 +27,11 @@ export default function Collabs() {
   const [posts, setPosts] = useState<CollabPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [myApplications, setMyApplications] = useState<Set<string>>(new Set());
+
+  // Interest dialog state
+  const [interestDialogOpen, setInterestDialogOpen] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<CollabPost | null>(null);
 
   // Form
   const [title, setTitle] = useState("");
@@ -44,9 +50,28 @@ export default function Collabs() {
     setLoading(false);
   };
 
+  const fetchMyApplications = async () => {
+    if (!profile) return;
+    const { data } = await supabase
+      .from("collab_applications")
+      .select("post_id")
+      .eq("applicant_id", profile.id);
+    if (data) {
+      setMyApplications(new Set(data.map((a) => a.post_id)));
+    }
+  };
+
   useEffect(() => {
-    if (user) fetchPosts();
+    if (user) {
+      fetchPosts();
+    }
   }, [user]);
+
+  useEffect(() => {
+    if (profile) {
+      fetchMyApplications();
+    }
+  }, [profile]);
 
   if (authLoading) return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   if (!user) return <Navigate to="/auth" replace />;
@@ -72,11 +97,23 @@ export default function Collabs() {
     setSubmitting(false);
   };
 
+  const handleShowInterest = (post: CollabPost) => {
+    setSelectedPost(post);
+    setInterestDialogOpen(true);
+  };
+
+  const handleInterestSuccess = () => {
+    fetchMyApplications();
+  };
+
   const statusColor = (s: string) => {
     if (s === "open") return "gradient-primary text-primary-foreground border-transparent";
     if (s === "in_progress") return "bg-accent text-accent-foreground";
     return "bg-muted text-muted-foreground";
   };
+
+  const isOwnPost = (post: CollabPost) => profile?.id === post.author_id;
+  const hasApplied = (postId: string) => myApplications.has(postId);
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
@@ -134,7 +171,7 @@ export default function Collabs() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {posts.map((post, i) => (
                 <motion.div key={post.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
-                  <Card className="hover:shadow-lg transition-shadow">
+                  <Card className="hover:shadow-lg transition-shadow h-full flex flex-col">
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
                         <CardTitle className="font-display text-lg line-clamp-1">{post.title}</CardTitle>
@@ -142,12 +179,38 @@ export default function Collabs() {
                       </div>
                       <p className="text-xs text-muted-foreground">by {post.profiles?.display_name || "Unknown"}</p>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="flex-1 flex flex-col">
                       {post.description && <p className="text-sm text-muted-foreground mb-3 line-clamp-3">{post.description}</p>}
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 mb-4">
                         {post.niche && <Badge variant="secondary">{post.niche}</Badge>}
                         {post.deadline && (
                           <Badge variant="outline" className="text-xs"><Calendar className="h-3 w-3 mr-1" />{new Date(post.deadline).toLocaleDateString()}</Badge>
+                        )}
+                      </div>
+                      
+                      {/* Show Interest Button */}
+                      <div className="mt-auto pt-3 border-t">
+                        {isOwnPost(post) ? (
+                          <Badge variant="outline" className="w-full justify-center py-2">Your Post</Badge>
+                        ) : hasApplied(post.id) ? (
+                          <Badge variant="secondary" className="w-full justify-center py-2 gap-1">
+                            <Check className="h-3 w-3" />
+                            Interest Shown
+                          </Badge>
+                        ) : post.status === "open" ? (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="w-full gap-1"
+                            onClick={() => handleShowInterest(post)}
+                          >
+                            <HandHeart className="h-4 w-4" />
+                            Show Interest
+                          </Button>
+                        ) : (
+                          <Badge variant="outline" className="w-full justify-center py-2 text-muted-foreground">
+                            Not accepting applications
+                          </Badge>
                         )}
                       </div>
                     </CardContent>
@@ -158,6 +221,19 @@ export default function Collabs() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Show Interest Dialog */}
+      {selectedPost && (
+        <ShowInterestDialog
+          open={interestDialogOpen}
+          onOpenChange={setInterestDialogOpen}
+          postId={selectedPost.id}
+          postTitle={selectedPost.title}
+          authorId={selectedPost.author_id}
+          authorName={selectedPost.profiles?.display_name || "Unknown"}
+          onSuccess={handleInterestSuccess}
+        />
+      )}
     </div>
   );
 }
