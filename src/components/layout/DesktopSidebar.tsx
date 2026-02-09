@@ -1,14 +1,22 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { Home, Search, Heart, Briefcase, MessageCircle, Settings, LogOut, Sparkles } from "lucide-react";
+import { Home, Search, Heart, Briefcase, MessageCircle, Settings, LogOut, Sparkles, Building2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useProfile } from "@/hooks/useProfile";
 import { cn } from "@/lib/utils";
 
-const navItems = [
+const influencerNavItems = [
   { to: "/", icon: Home, label: "Home" },
   { to: "/discover", icon: Search, label: "Discover" },
   { to: "/match", icon: Heart, label: "Match" },
+  { to: "/collabs", icon: Briefcase, label: "Collabs" },
+  { to: "/messages", icon: MessageCircle, label: "Messages" },
+  { to: "/settings", icon: Settings, label: "Settings" },
+];
+
+const brandNavItems = [
+  { to: "/", icon: Home, label: "Dashboard" },
+  { to: "/discover", icon: Search, label: "Find Creators" },
   { to: "/collabs", icon: Briefcase, label: "Collabs" },
   { to: "/messages", icon: MessageCircle, label: "Messages" },
   { to: "/settings", icon: Settings, label: "Settings" },
@@ -18,6 +26,9 @@ export function DesktopSidebar() {
   const { signOut } = useAuth();
   const { profile } = useProfile();
   const navigate = useNavigate();
+
+  const isBrand = profile?.account_type === "brand";
+  const navItems = isBrand ? brandNavItems : influencerNavItems;
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-border bg-card">
@@ -68,7 +79,15 @@ export function DesktopSidebar() {
           </Avatar>
           <div className="flex-1 truncate">
             <p className="text-sm font-medium truncate">{profile?.display_name || "Your Profile"}</p>
-            <p className="text-xs text-muted-foreground truncate">{profile?.audience_tier || "nano"} creator</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {isBrand ? (
+                <span className="flex items-center gap-1">
+                  <Building2 className="h-3 w-3" /> Brand
+                </span>
+              ) : (
+                `${profile?.audience_tier || "nano"} creator`
+              )}
+            </p>
           </div>
         </button>
         <button

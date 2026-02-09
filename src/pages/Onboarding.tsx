@@ -42,7 +42,15 @@ export default function Onboarding() {
 
   if (authLoading || profileLoading) return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   if (!user) return <Navigate to="/auth" replace />;
-  if (profile?.onboarding_completed) return <Navigate to="/" replace />;
+  if (!profile) return <Navigate to="/auth" replace />;
+  
+  // If no account type set yet, go to account type selection
+  if (!profile.account_type) return <Navigate to="/account-type" replace />;
+  
+  // Redirect brands to brand-specific onboarding
+  if (profile.account_type === "brand") return <Navigate to="/brand-onboarding" replace />;
+  
+  if (profile.onboarding_completed) return <Navigate to="/" replace />;
 
   const toggleNiche = (n: string) => {
     setSelectedNiches((prev) => prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]);

@@ -247,40 +247,52 @@ export type Database = {
       }
       profiles: {
         Row: {
+          account_type: string | null
           audience_tier: string | null
           avatar_url: string | null
           bio: string | null
+          company_name: string | null
           created_at: string
           display_name: string
           id: string
+          industry: string | null
           location: string | null
           onboarding_completed: boolean | null
           updated_at: string
           user_id: string
+          website_url: string | null
         }
         Insert: {
+          account_type?: string | null
           audience_tier?: string | null
           avatar_url?: string | null
           bio?: string | null
+          company_name?: string | null
           created_at?: string
           display_name?: string
           id?: string
+          industry?: string | null
           location?: string | null
           onboarding_completed?: boolean | null
           updated_at?: string
           user_id: string
+          website_url?: string | null
         }
         Update: {
+          account_type?: string | null
           audience_tier?: string | null
           avatar_url?: string | null
           bio?: string | null
+          company_name?: string | null
           created_at?: string
           display_name?: string
           id?: string
+          industry?: string | null
           location?: string | null
           onboarding_completed?: boolean | null
           updated_at?: string
           user_id?: string
+          website_url?: string | null
         }
         Relationships: []
       }
