@@ -306,7 +306,7 @@ serve(async (req) => {
 
     try {
       const emailResponse = await resend.emails.send({
-        from: "CollabEx <noreply@collabex.com>",
+        from: "CollabEx <onboarding@resend.dev>",
         to: [recipientEmail],
         subject: emailSubjects[type] || safeTitle,
         html: `
