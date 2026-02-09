@@ -13,6 +13,7 @@ import { NicheSelector } from "@/components/profile/NicheSelector";
 import { AvatarUpload } from "@/components/profile/AvatarUpload";
 import { BannerUpload } from "@/components/profile/BannerUpload";
 import { SocialPlatformsManager } from "@/components/profile/SocialPlatformsManager";
+import { PaymentSettings } from "@/components/settings/PaymentSettings";
 
 export default function SettingsPage() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -193,6 +194,17 @@ export default function SettingsPage() {
             <SocialPlatformsManager profileId={profile.id} />
           </CardContent>
         </Card>
+      )}
+
+      {/* Payment Settings - Only for creators/influencers */}
+      {!isBrand && profile && (
+        <PaymentSettings
+          profileId={profile.id}
+          initialBaseRate={(profile as any).base_rate}
+          initialRateType={(profile as any).rate_type}
+          initialCurrency={(profile as any).currency}
+          initialOpenToFreeCollabs={(profile as any).open_to_free_collabs ?? false}
+        />
       )}
 
       {/* Niche Selector - Only for creators/influencers */}
