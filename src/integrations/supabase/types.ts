@@ -250,6 +250,7 @@ export type Database = {
           account_type: string | null
           audience_tier: string | null
           avatar_url: string | null
+          banner_url: string | null
           bio: string | null
           company_name: string | null
           created_at: string
@@ -260,12 +261,14 @@ export type Database = {
           onboarding_completed: boolean | null
           updated_at: string
           user_id: string
+          video_url: string | null
           website_url: string | null
         }
         Insert: {
           account_type?: string | null
           audience_tier?: string | null
           avatar_url?: string | null
+          banner_url?: string | null
           bio?: string | null
           company_name?: string | null
           created_at?: string
@@ -276,12 +279,14 @@ export type Database = {
           onboarding_completed?: boolean | null
           updated_at?: string
           user_id: string
+          video_url?: string | null
           website_url?: string | null
         }
         Update: {
           account_type?: string | null
           audience_tier?: string | null
           avatar_url?: string | null
+          banner_url?: string | null
           bio?: string | null
           company_name?: string | null
           created_at?: string
@@ -292,6 +297,7 @@ export type Database = {
           onboarding_completed?: boolean | null
           updated_at?: string
           user_id?: string
+          video_url?: string | null
           website_url?: string | null
         }
         Relationships: []
@@ -344,27 +350,33 @@ export type Database = {
           follower_count: number | null
           handle: string
           id: string
+          is_verified: boolean | null
           platform_name: string
           profile_id: string
           url: string | null
+          verified_at: string | null
         }
         Insert: {
           created_at?: string
           follower_count?: number | null
           handle: string
           id?: string
+          is_verified?: boolean | null
           platform_name: string
           profile_id: string
           url?: string | null
+          verified_at?: string | null
         }
         Update: {
           created_at?: string
           follower_count?: number | null
           handle?: string
           id?: string
+          is_verified?: boolean | null
           platform_name?: string
           profile_id?: string
           url?: string | null
+          verified_at?: string | null
         }
         Relationships: [
           {
