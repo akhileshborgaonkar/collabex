@@ -29,7 +29,7 @@ export default function AccountTypeSelection() {
   
   // If account type is already set and onboarding not complete, go to appropriate onboarding
   if (profile?.account_type && !profile.onboarding_completed) {
-    return <Navigate to="/onboarding" replace />;
+    return <Navigate to={profile.account_type === "brand" ? "/brand-onboarding" : "/onboarding"} replace />;
   }
   
   // If onboarding is complete, go home
@@ -47,7 +47,8 @@ export default function AccountTypeSelection() {
 
       if (error) throw error;
       
-      navigate("/onboarding");
+      // Navigate to appropriate onboarding based on account type
+      navigate(selectedType === "brand" ? "/brand-onboarding" : "/onboarding");
     } catch (err) {
       toast({
         title: "Error",
