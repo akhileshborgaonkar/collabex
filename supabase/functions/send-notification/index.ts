@@ -164,23 +164,40 @@ serve(async (req) => {
       );
     }
 
+    // Get the recipient's profile ID from their user_id
+    const { data: recipientProfile, error: recipientError } = await supabase
+      .from("profiles")
+      .select("id, user_id")
+      .eq("user_id", recipientUserId)
+      .single();
+
+    if (recipientError || !recipientProfile) {
+      console.error("Recipient profile not found:", recipientError);
+      return new Response(
+        JSON.stringify({ error: "Recipient not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const recipientProfileId = recipientProfile.id;
+    console.log(`Sender profile: ${senderProfile.id}, Recipient profile: ${recipientProfileId}`);
+
     // Verify that sender has a valid relationship with recipient
-    // Check for matches
+    // Check for matches (uses profile IDs)
     const { data: relationship } = await supabase
       .from("matches")
       .select("id")
-      .or(`and(profile_a.eq.${senderProfile.id},profile_b.eq.${recipientUserId}),and(profile_a.eq.${recipientUserId},profile_b.eq.${senderProfile.id})`)
+      .or(`and(profile_a.eq.${senderProfile.id},profile_b.eq.${recipientProfileId}),and(profile_a.eq.${recipientProfileId},profile_b.eq.${senderProfile.id})`)
       .limit(1);
 
-    // Check for collaborations
+    // Check for collaborations (uses profile IDs)
     const { data: collaboration } = await supabase
       .from("collaborations")
       .select("id")
-      .or(`and(profile_a.eq.${senderProfile.id},profile_b.eq.${recipientUserId}),and(profile_a.eq.${recipientUserId},profile_b.eq.${senderProfile.id})`)
+      .or(`and(profile_a.eq.${senderProfile.id},profile_b.eq.${recipientProfileId}),and(profile_a.eq.${recipientProfileId},profile_b.eq.${senderProfile.id})`)
       .limit(1);
 
     // Check if sender has applied to recipient's collab post (for collab_interest notifications)
-    // This validates that the sender is applying to a post owned by the recipient
     const { data: collabApplication } = await supabase
       .from("collab_applications")
       .select("id, collab_posts!inner(author_id)")
@@ -188,14 +205,14 @@ serve(async (req) => {
       .limit(1);
     
     const hasApplicationToRecipient = collabApplication && collabApplication.some(
-      (app: { collab_posts: { author_id: string } }) => app.collab_posts.author_id === recipientUserId
+      (app: { collab_posts: { author_id: string } }) => app.collab_posts.author_id === recipientProfileId
     );
 
     // Check if recipient owns a collab post that sender can apply to
     const { data: recipientPosts } = await supabase
       .from("collab_posts")
       .select("id")
-      .eq("author_id", recipientUserId)
+      .eq("author_id", recipientProfileId)
       .limit(1);
     
     const recipientHasCollabPost = recipientPosts && recipientPosts.length > 0;
@@ -208,6 +225,7 @@ serve(async (req) => {
     
     if (!hasRelationship) {
       console.error("No valid relationship between sender and recipient");
+      console.error(`Checks: match=${relationship?.length}, collab=${collaboration?.length}, app=${hasApplicationToRecipient}, post=${recipientHasCollabPost}`);
       return new Response(
         JSON.stringify({ error: "Unauthorized - no relationship with recipient" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -216,23 +234,8 @@ serve(async (req) => {
 
     console.log(`Creating notification for user ${recipientUserId}: ${type}`);
 
-    // Get recipient's profile to find their user_id
-    const { data: recipientProfile, error: recipientError } = await supabase
-      .from("profiles")
-      .select("user_id")
-      .eq("id", recipientUserId)
-      .single();
-
-    if (recipientError || !recipientProfile) {
-      console.error("Recipient profile not found:", recipientError);
-      return new Response(
-        JSON.stringify({ error: "Recipient not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Get the recipient's email from auth.users
-    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(recipientProfile.user_id);
+    // Get the recipient's email from auth.users (recipientUserId is already the user_id)
+    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(recipientUserId);
     
     if (userError || !userData?.user?.email) {
       console.error("Error fetching user:", userError);
@@ -247,11 +250,11 @@ serve(async (req) => {
     const safeMessage = escapeHtml(message);
     const safeTitle = escapeHtml(title);
 
-    // Create in-app notification
+    // Create in-app notification (recipientUserId is already the user_id)
     const { error: notifError } = await supabase
       .from("notifications")
       .insert({
-        user_id: recipientProfile.user_id,
+        user_id: recipientUserId,
         type,
         title: safeTitle,
         message: safeMessage,
