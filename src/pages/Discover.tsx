@@ -7,15 +7,19 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Search, Filter, MapPin, Users, Loader2 } from "lucide-react";
+import { Search, Filter, MapPin, Users, Loader2, BadgeCheck } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { motion } from "framer-motion";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Tables } from "@/integrations/supabase/types";
 
 const NICHES = ["Fashion", "Tech", "Fitness", "Food", "Travel", "Gaming", "Beauty", "Music", "Education", "Lifestyle"];
 
-type ProfileWithNiches = Tables<"profiles"> & { profile_niches: { niche: string }[] };
+type ProfileWithNiches = Tables<"profiles"> & { 
+  profile_niches: { niche: string }[];
+  social_platforms: { is_verified: boolean; platform_name: string }[];
+};
 
 export default function Discover() {
   const { user, loading: authLoading } = useAuth();
@@ -31,7 +35,7 @@ export default function Discover() {
     const fetchProfiles = async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("*, profile_niches(niche)")
+        .select("*, profile_niches(niche), social_platforms(is_verified, platform_name)")
         .eq("onboarding_completed", true)
         .neq("user_id", user.id)
         .limit(50);
@@ -51,6 +55,10 @@ export default function Discover() {
   });
 
   const toggleNiche = (n: string) => setNicheFilter((prev) => prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]);
+
+  const getVerifiedPlatforms = (platforms: { is_verified: boolean; platform_name: string }[]) => {
+    return platforms.filter((p) => p.is_verified);
+  };
 
   const FilterPanel = () => (
     <div className="space-y-4">
@@ -120,40 +128,65 @@ export default function Discover() {
               <p className="text-sm">Try adjusting your search or filters</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filtered.map((p, i) => (
-                <motion.div key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
-                  <Card
-                    className="hover:shadow-lg transition-all cursor-pointer group"
-                    onClick={() => navigate(`/profile/${p.id}`)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-3 mb-3">
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage src={p.avatar_url || ""} />
-                          <AvatarFallback className="gradient-primary text-primary-foreground font-bold">
-                            {p.display_name.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="font-display font-semibold truncate group-hover:text-primary transition-colors">{p.display_name}</p>
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            {p.location && <><MapPin className="h-3 w-3" /><span className="truncate">{p.location}</span></>}
+            <TooltipProvider>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filtered.map((p, i) => {
+                  const verifiedPlatforms = getVerifiedPlatforms(p.social_platforms || []);
+                  const hasVerifiedPlatform = verifiedPlatforms.length > 0;
+                  
+                  return (
+                    <motion.div key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
+                      <Card
+                        className="hover:shadow-lg transition-all cursor-pointer group"
+                        onClick={() => navigate(`/profile/${p.id}`)}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="relative">
+                              <Avatar className="h-12 w-12">
+                                <AvatarImage src={p.avatar_url || ""} />
+                                <AvatarFallback className="gradient-primary text-primary-foreground font-bold">
+                                  {p.display_name.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              {hasVerifiedPlatform && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="absolute -bottom-1 -right-1 bg-primary text-primary-foreground rounded-full p-0.5">
+                                      <BadgeCheck className="h-4 w-4" />
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="text-xs">
+                                      Verified on {verifiedPlatforms.map(p => p.platform_name).join(", ")}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-display font-semibold truncate group-hover:text-primary transition-colors">{p.display_name}</p>
+                              </div>
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                {p.location && <><MapPin className="h-3 w-3" /><span className="truncate">{p.location}</span></>}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                      {p.bio && <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{p.bio}</p>}
-                      <div className="flex flex-wrap gap-1">
-                        {p.profile_niches.slice(0, 3).map((pn) => (
-                          <Badge key={pn.niche} variant="secondary" className="text-xs">{pn.niche}</Badge>
-                        ))}
-                        <Badge variant="outline" className="text-xs capitalize">{p.audience_tier}</Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
-            </div>
+                          {p.bio && <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{p.bio}</p>}
+                          <div className="flex flex-wrap gap-1">
+                            {p.profile_niches.slice(0, 3).map((pn) => (
+                              <Badge key={pn.niche} variant="secondary" className="text-xs">{pn.niche}</Badge>
+                            ))}
+                            <Badge variant="outline" className="text-xs capitalize">{p.audience_tier}</Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </TooltipProvider>
           )}
         </div>
       </div>
