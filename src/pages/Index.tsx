@@ -6,11 +6,59 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Index() {
   const { user, loading: authLoading } = useAuth();
   const { profile, loading: profileLoading } = useProfile();
   const navigate = useNavigate();
+  
+  const [matchesCount, setMatchesCount] = useState(0);
+  const [activeCollabsCount, setActiveCollabsCount] = useState(0);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!profile?.id) {
+      setStatsLoading(false);
+      return;
+    }
+
+    const fetchStats = async () => {
+      try {
+        // Fetch matches count
+        const { count: matchCount } = await supabase
+          .from("matches")
+          .select("*", { count: "exact", head: true })
+          .or(`profile_a.eq.${profile.id},profile_b.eq.${profile.id}`);
+
+        // Fetch active collaborations count (pending + in_progress)
+        const { count: collabCount } = await supabase
+          .from("collaborations")
+          .select("*", { count: "exact", head: true })
+          .or(`profile_a.eq.${profile.id},profile_b.eq.${profile.id}`)
+          .in("status", ["pending", "in_progress"]);
+
+        // Fetch unread messages count
+        const { count: messageCount } = await supabase
+          .from("messages")
+          .select("*", { count: "exact", head: true })
+          .eq("receiver_id", profile.id)
+          .eq("read", false);
+
+        setMatchesCount(matchCount || 0);
+        setActiveCollabsCount(collabCount || 0);
+        setUnreadMessagesCount(messageCount || 0);
+      } catch (error) {
+        console.error("Error fetching stats:", error);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, [profile?.id]);
 
   if (authLoading || profileLoading) {
     return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -19,10 +67,10 @@ export default function Index() {
   if (profile && !profile.onboarding_completed) return <Navigate to="/onboarding" replace />;
 
   const stats = [
-    { icon: Users, label: "Matches", value: "0", color: "text-primary" },
-    { icon: Briefcase, label: "Active Collabs", value: "0", color: "text-secondary" },
-    { icon: TrendingUp, label: "Profile Views", value: "0", color: "text-accent" },
-    { icon: MessageCircle, label: "Messages", value: "0", color: "text-primary" },
+    { icon: Users, label: "Matches", value: statsLoading ? "..." : matchesCount.toString(), color: "text-primary" },
+    { icon: Briefcase, label: "Active Collabs", value: statsLoading ? "..." : activeCollabsCount.toString(), color: "text-secondary" },
+    { icon: TrendingUp, label: "Profile Views", value: "—", color: "text-accent" },
+    { icon: MessageCircle, label: "Messages", value: statsLoading ? "..." : unreadMessagesCount.toString(), color: "text-primary" },
   ];
 
   return (
