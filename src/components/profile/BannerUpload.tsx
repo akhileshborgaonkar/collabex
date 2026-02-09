@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, ImageIcon, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { ImageCropDialog } from "./ImageCropDialog";
 
 interface BannerUploadProps {
   profileId: string;
@@ -14,6 +15,8 @@ interface BannerUploadProps {
 
 export function BannerUpload({ profileId, currentUrl, onUpload, onRemove }: BannerUploadProps) {
   const [uploading, setUploading] = useState(false);
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -27,27 +30,38 @@ export function BannerUpload({ profileId, currentUrl, onUpload, onRemove }: Bann
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "Error", description: "Image must be less than 10MB", variant: "destructive" });
+    if (file.size > 15 * 1024 * 1024) {
+      toast({ title: "Error", description: "Image must be less than 15MB", variant: "destructive" });
+      return;
+    }
+
+    // Create object URL for cropping
+    const imageUrl = URL.createObjectURL(file);
+    setSelectedImage(imageUrl);
+    setCropDialogOpen(true);
+
+    // Reset file input
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleCropComplete = async (croppedImage: Blob) => {
+    if (!user) {
+      toast({ title: "Error", description: "You must be logged in to upload", variant: "destructive" });
       return;
     }
 
     setUploading(true);
 
     try {
-      if (!user) {
-        toast({ title: "Error", description: "You must be logged in to upload", variant: "destructive" });
-        setUploading(false);
-        return;
-      }
-
-      const fileExt = file.name.split(".").pop();
       // Use user.id (auth.uid()) for storage path to match RLS policies
-      const fileName = `${user.id}/banner.${fileExt}`;
+      const fileName = `${user.id}/banner.jpg`;
 
       const { error: uploadError } = await supabase.storage
         .from("portfolio")
-        .upload(fileName, file, { upsert: true });
+        .upload(fileName, croppedImage, { 
+          upsert: true,
+          contentType: "image/jpeg"
+        });
 
       if (uploadError) throw uploadError;
 
@@ -69,10 +83,14 @@ export function BannerUpload({ profileId, currentUrl, onUpload, onRemove }: Bann
     } catch (err) {
       console.error("Banner upload error:", err);
       toast({ title: "Error", description: "Failed to upload banner", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      // Clean up object URL
+      if (selectedImage) {
+        URL.revokeObjectURL(selectedImage);
+        setSelectedImage(null);
+      }
     }
-
-    setUploading(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleRemove = async () => {
@@ -89,58 +107,78 @@ export function BannerUpload({ profileId, currentUrl, onUpload, onRemove }: Bann
   };
 
   return (
-    <div className="space-y-3">
-      <div
-        className={`relative h-32 rounded-lg border-2 border-dashed transition-colors overflow-hidden ${
-          currentUrl ? "border-transparent" : "border-border hover:border-primary/50"
-        }`}
-      >
-        {currentUrl ? (
-          <>
-            <img
-              src={currentUrl}
-              alt="Profile banner"
-              className="h-full w-full object-cover"
-            />
-            <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-              >
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Change"}
-              </Button>
-              <Button size="sm" variant="destructive" onClick={handleRemove}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </>
-        ) : (
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="h-full w-full flex flex-col items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {uploading ? (
-              <Loader2 className="h-8 w-8 animate-spin" />
-            ) : (
-              <>
-                <ImageIcon className="h-8 w-8 mb-2" />
-                <span className="text-sm">Upload Banner Image</span>
-                <span className="text-xs">Recommended: 1200x300px</span>
-              </>
-            )}
-          </button>
-        )}
+    <>
+      <div className="space-y-3">
+        <div
+          className={`relative h-32 rounded-lg border-2 border-dashed transition-colors overflow-hidden ${
+            currentUrl ? "border-transparent" : "border-border hover:border-primary/50"
+          }`}
+        >
+          {currentUrl ? (
+            <>
+              <img
+                src={currentUrl}
+                alt="Profile banner"
+                className="h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Change"}
+                </Button>
+                <Button size="sm" variant="destructive" onClick={handleRemove}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </>
+          ) : (
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="h-full w-full flex flex-col items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {uploading ? (
+                <Loader2 className="h-8 w-8 animate-spin" />
+              ) : (
+                <>
+                  <ImageIcon className="h-8 w-8 mb-2" />
+                  <span className="text-sm">Upload Banner Image</span>
+                  <span className="text-xs">Recommended: 1200x300px (4:1 ratio)</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="hidden"
+        />
       </div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleFileChange}
-        className="hidden"
-      />
-    </div>
+
+      {selectedImage && (
+        <ImageCropDialog
+          open={cropDialogOpen}
+          onOpenChange={(open) => {
+            setCropDialogOpen(open);
+            if (!open && selectedImage) {
+              URL.revokeObjectURL(selectedImage);
+              setSelectedImage(null);
+            }
+          }}
+          imageSrc={selectedImage}
+          aspectRatio={4}
+          circularCrop={false}
+          onCropComplete={handleCropComplete}
+          title="Crop Banner Image"
+        />
+      )}
+    </>
   );
 }
