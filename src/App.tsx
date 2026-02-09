@@ -7,7 +7,9 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+import AccountTypeSelection from "./pages/AccountTypeSelection";
 import Onboarding from "./pages/Onboarding";
+import BrandOnboarding from "./pages/BrandOnboarding";
 import Discover from "./pages/Discover";
 import Match from "./pages/Match";
 import Collabs from "./pages/Collabs";
@@ -29,7 +31,9 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/account-type" element={<AccountTypeSelection />} />
               <Route path="/onboarding" element={<Onboarding />} />
+              <Route path="/brand-onboarding" element={<BrandOnboarding />} />
               <Route path="/discover" element={<Discover />} />
               <Route path="/match" element={<Match />} />
               <Route path="/collabs" element={<Collabs />} />

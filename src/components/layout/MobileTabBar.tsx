@@ -1,8 +1,9 @@
 import { NavLink } from "react-router-dom";
 import { Home, Search, Heart, Briefcase, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useProfile } from "@/hooks/useProfile";
 
-const tabs = [
+const influencerTabs = [
   { to: "/", icon: Home, label: "Home" },
   { to: "/discover", icon: Search, label: "Discover" },
   { to: "/match", icon: Heart, label: "Match" },
@@ -10,7 +11,18 @@ const tabs = [
   { to: "/messages", icon: MessageCircle, label: "Chat" },
 ];
 
+const brandTabs = [
+  { to: "/", icon: Home, label: "Home" },
+  { to: "/discover", icon: Search, label: "Creators" },
+  { to: "/collabs", icon: Briefcase, label: "Collabs" },
+  { to: "/messages", icon: MessageCircle, label: "Chat" },
+];
+
 export function MobileTabBar() {
+  const { profile } = useProfile();
+  const isBrand = profile?.account_type === "brand";
+  const tabs = isBrand ? brandTabs : influencerTabs;
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-md safe-area-inset-bottom">
       <div className="flex items-center justify-around px-2 py-2">

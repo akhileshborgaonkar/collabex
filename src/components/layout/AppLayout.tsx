@@ -9,7 +9,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   // Don't show nav on auth/onboarding pages
-  const hideNav = ["/auth", "/onboarding"].includes(location.pathname);
+  const hideNav = ["/auth", "/onboarding", "/account-type", "/brand-onboarding"].includes(location.pathname);
 
   if (hideNav) {
     return <>{children}</>;
